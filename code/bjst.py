@@ -8,26 +8,14 @@ logger = logging.getLogger()
 
 class BJST:
     def __init__(self, n_topics, vocab_size, senti_lex=None, n_senti=3, n_iter=1000, refresh=10, random_state=None, theta=0.5):
-        self.n_topics = n_topics
-        self.n_iter = n_iter
-        self.n_senti = n_senti
-        self.vocab_size = vocab_size
-        self.theta = theta
-        self.refresh = refresh
-        self.random_state = random_state
-        self.senti_lex = senti_lex
+        self.n_topics , self.n_iter , self.n_senti , self.vocab_size , self.theta , self.refresh , self.random_state , self.senti_lex , self.B  = n_topics, n_iter, n_senti, vocab_size, theta, refresh, random_state, senti_lex, []
 
-        self.B = []
         # random numbers that are reused
         rng = self.check_random_state(random_state)
         self._rands = rng.rand(1024 ** 2 // 8)  # 1MiB of random variates
 
     def _initialize(self, X):
-        B = len(X)
-        W = self.vocab_size
-        n_senti = self.n_senti
-        n_topics = self.n_topics
-        n_iter = self.n_iter
+        B , W , n_senti , n_topics , n_iter  = len(X), self.vocab_size, self.n_senti, self.n_topics, self.n_iter
 
         logger.info("n_biterms: {}".format(B))
         logger.info("vocab_size: {}".format(W))
@@ -35,9 +23,7 @@ class BJST:
         logger.info("n_topics: {}".format(n_topics))
         logger.info("n_iter: {}".format(n_iter))
 
-        self.nlzw = np.zeros((n_senti, n_topics, W), dtype=np.intc)
-        self.nlz = np.zeros((n_senti, n_topics), dtype=np.intc)
-        self.nl = np.zeros(n_senti, dtype=np.intc)
+        self.nlzw , self.nlz , self.nl  = np.zeros((n_senti, n_topics, W), dtype=np.intc), np.zeros((n_senti, n_topics), dtype=np.intc), np.zeros(n_senti, dtype=np.intc)
 
         self.BS1, self.BS2 = self.matrix_to_lists(X)
         self.ZS, self.LS = np.empty_like(self.BS1, dtype=np.intc), np.empty_like(self.BS1, dtype=np.intc)
@@ -46,8 +32,7 @@ class BJST:
             b1, b2 = self.BS1[i], self.BS2[i]
             z_new = i % n_topics
             l_new = i % n_senti
-            self.ZS[i] = z_new
-            self.LS[i] = l_new
+            self.ZS[i] , self.LS[i]  = z_new, l_new
             self.nlzw[l_new, z_new, b1] += 1
             self.nlzw[l_new, z_new, b2] += 1
             self.nlz[l_new, z_new] += 1
@@ -67,13 +52,12 @@ class BJST:
 
 
     def _fit(self, X):
-        random_state = self.check_random_state(self.random_state)
-        rands = self._rands.copy()
+        random_state , rands  = self.check_random_state(self.random_state), self._rands.copy()
         self._initialize(X)
         for it in range(self.n_iter):
             random_state.shuffle(rands)
 
-            if it % self.refresh == 0:
+            if not it % self.refresh:
                 logger.info("Train %d / %d epoch" % (it, self.n_iter))
             #     ll = self.loglikelihood()
             #     logger.info("<{}> log likelihood: {:.0f}".format(it, ll))
@@ -111,12 +95,9 @@ class BJST:
         :param X_d:
         :return:
         """
-        theta_dlz = np.zeros((len(X_d), self.n_senti, self.n_topics))
-        plz = self.normalize(self.nlz + self.alpha_lz)
+        theta_dlz , plz  = np.zeros((len(X_d), self.n_senti, self.n_topics)), self.normalize(self.nlz + self.alpha_lz)
         for i, d_wij in enumerate(X_d):
-            tmp = []
-            for wi, wj in d_wij:
-                tmp.append(self.normalize(self.phi_lzw[:, :, wi] * self.phi_lzw[:, :, wj] * plz))
+            tmp = [self.normalize(self.phi_lzw[:, :, wi] * self.phi_lzw[:, :, wj] * plz) for (wi, wj) in d_wij]
             theta_dlz[i, :, :] = np.mean(tmp, axis=0)
         return theta_dlz
 
@@ -157,11 +138,10 @@ class BJST:
         BS2 : contains the second word in kth biterm in the corpus
 
         """
-        BS1 = []
-        BS2 = []
-        for bs in X:
-            BS1.append(bs[0])
-            BS2.append(bs[1])
+        BS1 , BS2  = [], []
+        for (bs_0, bs_1, *bs_len) in X:
+            BS1.append(bs_0)
+            BS2.append(bs_1)
         return np.array(BS1, dtype=np.intc), np.array(BS2, dtype=np.intc)
 
     def soft_align(self, B, window_size, theta):
@@ -169,8 +149,7 @@ class BJST:
         Soft alignment to produce a soft weight sum of B according to window size
         """
         eta = B[-1]
-        eta_new = np.zeros(eta.shape)
-        weights = self.softmax(eta, B, window_size) # (version, senti_num, topic_num)
+        eta_new , weights  = np.zeros(eta.shape), self.softmax(eta, B, window_size)
         for i in range(window_size):
             if i > len(B)-1:
                 break
@@ -193,11 +172,11 @@ class BJST:
 
     def init_params(self, X, alpha, beta, gamma):
         avg_doc_len = 2
-        if alpha == 0:
+        if not alpha:
             alpha = 50.0 / (self.n_senti * self.n_topics)
         self.alpha_lz = np.full((self.n_senti, self.n_topics), alpha, dtype=np.float64)
         self.alphaSum_l = np.sum(self.alpha_lz, axis=1)
-        if beta == 0:
+        if not beta:
             self.beta_lzw = np.full((self.n_senti, self.n_topics, self.vocab_size), 0.01, dtype=np.float64)
         else:
             self.beta_lzw = np.full((self.n_senti, self.n_topics, self.vocab_size), beta, dtype=np.float64)
@@ -206,7 +185,6 @@ class BJST:
                 self.beta_lzw[:,:, wid] *= np.array([0.05, 0.9, 0.05])[:, np.newaxis]
             elif pl == -1:  # neg
                 self.beta_lzw[:,:, wid] *= np.array([0.05, 0.05, 0.9])[:, np.newaxis]
-        self.betaSum_lz = np.sum(self.beta_lzw, axis=2)
-        self.gamma = gamma
-        if gamma == 0:
+        self.betaSum_lz , self.gamma  = np.sum(self.beta_lzw, axis=2), gamma
+        if not gamma:
             self.gamma = 50.0 / self.n_senti
