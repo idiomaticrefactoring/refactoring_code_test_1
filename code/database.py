@@ -18,8 +18,7 @@ class Database:
 
     def insert_app_info(self, app_id, app_info):
         # app_info = (app_name, category, ads, price, rating_num, rating_val)
-        db = self.client.google_review_helpful_id
-        _id = app_id
+        db , _id  = self.client.google_review_helpful_id, app_id
         insert_info = {"app_name": app_info[0], "category": app_info[1], "ads_info": app_info[2], "price": app_info[3],
                        "rating_num": app_info[4], "rating_val": app_info[5], "_id": _id}
         try:
@@ -43,11 +42,8 @@ class Database:
         print("App %s insert review successfully." % app_id)
 
     def read_review_reply(self):
-        review_dict = {}
-        db = self.client.googel_review_reply
+        review_dict , db  = {}, self.client.googel_review_reply
         collections = db.collection_names()
         for collection in collections:
-            review_dict[collection] = []
-            for review in db[collection].find():
-                review_dict[collection].append(review)
+            review_dict[collection] = [review for review in db[collection].find()]
         return review_dict
